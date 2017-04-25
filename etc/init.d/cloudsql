@@ -1,13 +1,25 @@
 #!/bin/sh
+#
+# cloudsql          Run google cloudsql proxy
+#
+# chkconfig: 2345 90 60
+# description: Runs an instance of the google cloudsql proxy locally to enable
+#              connections to cloudSQL database instances
+
 ### BEGIN INIT INFO
-# Provides:          cloudsql
-# Required-Start:    $local_fs $network $named $time $syslog
-# Required-Stop:     $local_fs $network $named $time $syslog
-# Default-Start:     2 3 4 5
-# Default-Stop:      0 1 6
-# Description:       Google Cloud SQL Proxy
+# Provides: cloudsql
+# Required-Start: $local_fs $network $syslog
+# Required-Stop: $local_fs $network $syslog
+# Default-Start:  2345
+# Default-Stop: 90
+# Short-Description: run cloudsql proxy
+# Description: Google Cloud SQL Proxy
 ### END INIT INFO
 
+. /etc/rc.d/init.d/functions
+
+prog=cloud_sql_proxy
+lockfile=/var/lock/subsys/cloud_sql_proxy
 SCRIPT=/opt/cloudsql/cloud_sql_proxy
 RUNAS=root
 
@@ -20,41 +32,46 @@ APPCONFIG=$APPETC/cloudsql.conf
 
 OPTIONS="-instances=$INSTANCE_ID=tcp:$MYSQL_PORT -credential_file=$CREDENTIAL_FILE $ADDITIONAL_OPTIONS"
 
-PIDFILE=/var/run/cloudsql.pid
+PIDFILE=/var/run/$prog.pid
 LOGFILE=/var/log/cloudsql.log
 
 start() {
-  if [ -f /var/run/$PIDNAME ] && kill -0 $(cat /var/run/$PIDNAME); then
-    echo 'Service already running' >&2
-    return 1
-  fi
-  echo 'Starting service…' >&2
-  local CMD="$SCRIPT $OPTIONS &> \"$LOGFILE\" & echo \$!"
-  su -c "$CMD" $RUNAS > "$PIDFILE"
-  echo 'Service started' >&2
+    if [ $UID -ne 0 ] ; then
+        echo "User has insufficient privilege."
+        exit 4
+    fi
+    [ -x $SCRIPT ] || exit 5
+    [ -f $APPCONFIG ] || exit 6
+    echo -n $"Starting $prog: "
+    daemon $SCRIPT $OPTIONS &>> $LOGFILE &
+    retval=$?
+    echo
+    if [ $retval -eq 0 ]; then
+      pidof $prog > $PIDFILE
+      touch $lockfile
+    fi
 }
 
 stop() {
-  if [ ! -f "$PIDFILE" ] || ! kill -0 $(cat "$PIDFILE"); then
-    echo 'Service not running' >&2
-    return 1
-  fi
-  echo 'Stopping service…' >&2
-  kill -15 $(cat "$PIDFILE") && rm -f "$PIDFILE"
-  echo 'Service stopped' >&2
+    if [ $UID -ne 0 ] ; then
+        echo "User has insufficient privilege."
+        exit 4
+    fi
+    echo -n $"Stopping $prog: "
+        if [ -n "`pidfileofproc $prog`" ]; then
+                killproc $SCRIPT
+                RETVAL=3
+        else
+                failure $"Stopping $prog"
+        fi
+    retval=$?
+    echo
+    [ $retval -eq 0 ] && rm -f $lockfile
 }
 
-uninstall() {
-  echo -n "Are you really sure you want to uninstall this service? That cannot be undone. [yes|No] "
-  local SURE
-  read SURE
-  if [ "$SURE" = "yes" ]; then
-    stop
-    rm -f "$PIDFILE"
-    echo "Notice: log file is not be removed: '$LOGFILE'" >&2
-    update-rc.d -f cloudsql remove
-    rm -fv "$0"
-  fi
+restart() {
+  stop
+  start
 }
 
 case "$1" in
