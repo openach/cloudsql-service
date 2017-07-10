@@ -18,7 +18,11 @@ APPCONFIG=$APPETC/cloudsql.conf
 # Load application config
 . $APPCONFIG
 
-OPTIONS="-instances=$INSTANCE_ID=tcp:$MYSQL_PORT -credential_file=$CREDENTIAL_FILE $ADDITIONAL_OPTIONS"
+if [ -z "$CREDENTIAL_FILE" ]; then
+  OPTIONS="-instances=$INSTANCE_ID=tcp:$MYSQL_PORT $ADDITIONAL_OPTIONS"
+else
+  OPTIONS="-instances=$INSTANCE_ID=tcp:$MYSQL_PORT -credential_file=$CREDENTIAL_FILE $ADDITIONAL_OPTIONS"
+fi
 
 PIDFILE=/var/run/cloudsql.pid
 LOGFILE=/var/log/cloudsql.log
